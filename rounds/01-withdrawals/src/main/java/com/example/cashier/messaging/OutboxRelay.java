@@ -16,6 +16,9 @@ import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 @Component
 public class OutboxRelay {
 
+    // Longer than the producer's delivery.timeout.ms (5s): when this wait expires the client has already given up.
+    private static final long SEND_WAIT_SECONDS = 7;
+
     private static final Logger log = LoggerFactory.getLogger(OutboxRelay.class);
 
     private final OutboxRepository outbox;
@@ -36,7 +39,7 @@ public class OutboxRelay {
                     new ProducerRecord<>(event.getTopic(), event.getKey(), event.getPayload());
             record.headers().add("event-id", String.valueOf(event.getId()).getBytes(StandardCharsets.UTF_8));
             try {
-                kafka.send(record).get(5, TimeUnit.SECONDS);
+                kafka.send(record).get(SEND_WAIT_SECONDS, TimeUnit.SECONDS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 return;
