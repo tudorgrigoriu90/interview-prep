@@ -186,3 +186,18 @@ No concurrent withdrawal test, no negative or zero amount test, no cross-currenc
 4. What if two of these run at the same moment? What if the same request arrives twice?
 5. Is anything remote called while a row lock or a transaction is open?
 6. Does the test's expected value come from the business rule, or from what the code printed?
+
+---
+
+## Database portability (what is vendor specific in the fixes above)
+| Fix | Portable version | Vendor specific version |
+|---|---|---|
+| Check the debit result | `UPDATE ... WHERE balance >= :a` and test the row count. Works on PostgreSQL, Oracle, SQL Server and MySQL InnoDB | none needed |
+| Re-read the balance after the update | `@Modifying(clearAutomatically = true)` then read again | `UPDATE ... RETURNING` (PG, Oracle), `OUTPUT` (SQL Server); MySQL has none |
+| One relay at a time | ShedLock JDBC | `FOR UPDATE SKIP LOCKED` (PG, MySQL 8, Oracle), `READPAST` (SQL Server) |
+| Index on unpublished outbox rows | composite index on `(status, id)` | partial index `WHERE status = 'NEW'` (PG, SQL Server) |
+| Long JSON payload column | `VARCHAR(4000)` or a CLOB mapping | `text` type (PG, MySQL) |
+| Dedupe consumer | unique constraint and catch the violation | `ON CONFLICT DO NOTHING` (PG), `INSERT IGNORE` (MySQL) |
+| Check constraints | declare them; MySQL enforces them only from 8.0.16 | |
+| Isolation | assume READ COMMITTED only if you checked: MySQL InnoDB defaults to REPEATABLE READ, where plain SELECTs are snapshots (a stale balance pre-check is even staler) | |
+| Rounding on insert | never rely on the column rounding a value; validate the scale in code | numeric overflow and rounding rules differ by vendor and `sql_mode` |

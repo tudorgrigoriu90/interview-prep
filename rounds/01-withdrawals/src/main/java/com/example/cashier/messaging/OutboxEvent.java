@@ -9,10 +9,11 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 
 @Entity
-@Table(name = "outbox")
+@Table(name = "outbox", indexes = @Index(name = "idx_outbox_status_id", columnList = "status, id"))
 public class OutboxEvent {
 
     @Id
@@ -25,7 +26,7 @@ public class OutboxEvent {
     @Column(name = "event_key", nullable = false)
     private String key;
 
-    @Column(nullable = false, columnDefinition = "text")
+    @Column(nullable = false, length = 4000)
     private String payload;
 
     @Enumerated(EnumType.STRING)

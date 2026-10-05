@@ -4,5 +4,3 @@ CREATE TABLE IF NOT EXISTS shedlock (
     locked_at  TIMESTAMP    NOT NULL,
     locked_by  VARCHAR(255) NOT NULL
 );
-
-CREATE INDEX IF NOT EXISTS idx_outbox_new ON outbox (id) WHERE status = 'NEW';

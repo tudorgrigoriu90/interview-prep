@@ -1,0 +1,21 @@
+spring:
+  application:
+    name: deposits-service
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/deposits}
+    username: ${DB_USER:deposits}
+    password: ${DB_PASSWORD}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: update
+
+deposits:
+  webhook-secret: whsec_9d41c7e2b5a84f0f9c3e7a61d2b0f4aa
+  psp:
+    base-url: ${PSP_BASE_URL:http://psp:8080}
+    connect-timeout: 1s
+    read-timeout: 30s
+    max-attempts: 3
+  reconciliation:
+    enabled: true
