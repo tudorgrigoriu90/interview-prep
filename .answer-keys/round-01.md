@@ -39,3 +39,4 @@ Assumptions given: multiple instances, PostgreSQL READ COMMITTED, Kafka at-least
 
 ## Post-round note
 During the live review the candidate's finding #12 (fire-and-forget Kafka send after commit) was implemented as a transactional outbox with a ShedLock relay, in the commit "Replace after-commit Kafka send with transactional outbox". The original exercise (with #12 present) is the commit `32a568e`. All other planted issues are unchanged.
+Also implemented during the live review: #1 (debit result checked) and #2 (`@Valid` plus service-level positive-amount check), with a concurrent test and negative/zero tests that fail on the original code.

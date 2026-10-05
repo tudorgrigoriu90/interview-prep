@@ -65,9 +65,12 @@ public class WithdrawalService {
         Wallet wallet = wallets.findByPlayerId(playerId)
                 .orElseThrow(() -> new WithdrawalException(WALLET_NOT_FOUND, "No wallet for player " + playerId));
 
+        BigDecimal amount = command.amount();
+        if (amount == null || amount.signum() <= 0) {
+            throw new WithdrawalException(INVALID_AMOUNT, "Amount must be positive");
+        }
         Currency currency = Currency.getInstance(command.currency());
         Currency payoutCurrency = Currency.getInstance(command.payoutCurrency());
-        BigDecimal amount = command.amount();
         if (amount.stripTrailingZeros().scale() > currency.getDefaultFractionDigits()) {
             throw new WithdrawalException(INVALID_AMOUNT, "Too many decimals for " + currency);
         }
@@ -77,7 +80,9 @@ public class WithdrawalService {
         if (wallet.getBalance().compareTo(total) < 0) {
             throw new WithdrawalException(INSUFFICIENT_FUNDS, "Balance too low for withdrawal of " + total);
         }
-        wallets.debit(wallet.getId(), total);
+        if (wallets.debit(wallet.getId(), total) == 0) {
+            throw new WithdrawalException(INSUFFICIENT_FUNDS, "Balance too low for withdrawal of " + total);
+        }
 
         BigDecimal payoutAmount = fxService.convert(amount, currency, payoutCurrency);
         Withdrawal withdrawal = withdrawals.save(new Withdrawal(

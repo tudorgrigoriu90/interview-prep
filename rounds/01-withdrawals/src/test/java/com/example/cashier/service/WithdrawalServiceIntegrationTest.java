@@ -1,8 +1,15 @@
 package com.example.cashier.service;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.kafka.clients.producer.ProducerRecord;
 
@@ -135,6 +142,50 @@ class WithdrawalServiceIntegrationTest {
                 .isInstanceOf(WithdrawalException.class)
                 .extracting(e -> ((WithdrawalException) e).reason())
                 .isEqualTo(WithdrawalException.Reason.INVALID_AMOUNT);
+    }
+
+    @Test
+    void rejectsZeroAndNegativeAmounts() {
+        for (String amount : new String[] {"0.00", "-100.00"}) {
+            assertThatThrownBy(() -> service.requestWithdrawal(playerId, key(), eur(amount)))
+                    .isInstanceOf(WithdrawalException.class)
+                    .extracting(e -> ((WithdrawalException) e).reason())
+                    .isEqualTo(WithdrawalException.Reason.INVALID_AMOUNT);
+        }
+        assertThat(balance()).isEqualByComparingTo("500.00");
+    }
+
+    @Test
+    void concurrentWithdrawalsCannotExceedBalance() throws Exception {
+        int threads = 8;
+        var pool = Executors.newFixedThreadPool(threads);
+        var startGun = new CountDownLatch(1);
+        var successes = new AtomicInteger();
+
+        List<Future<?>> futures = new ArrayList<>();
+        for (int i = 0; i < threads; i++) {
+            futures.add(pool.submit(() -> {
+                startGun.await();
+                try {
+                    service.requestWithdrawal(playerId, key(), eur("300.00"));
+                    successes.incrementAndGet();
+                } catch (WithdrawalException expected) {
+                    // insufficient funds for the losers
+                }
+                return null;
+            }));
+        }
+        startGun.countDown();
+        for (Future<?> f : futures) {
+            f.get(30, TimeUnit.SECONDS);
+        }
+        pool.shutdown();
+
+        assertThat(successes.get()).isEqualTo(1);
+        assertThat(balance()).isGreaterThanOrEqualTo(BigDecimal.ZERO);
+        assertThat(withdrawals.findAll())
+                .filteredOn(w -> w.getPlayerId().equals(playerId))
+                .hasSize(1);
     }
 
     private WithdrawalCommand eur(String amount) {

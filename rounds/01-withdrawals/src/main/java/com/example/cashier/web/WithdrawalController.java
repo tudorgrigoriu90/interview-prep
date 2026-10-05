@@ -1,6 +1,8 @@
 package com.example.cashier.web;
 
 import org.springframework.http.HttpStatus;
+import jakarta.validation.Valid;
+
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -24,7 +26,7 @@ public class WithdrawalController {
     @ResponseStatus(HttpStatus.CREATED)
     public WithdrawalResponse create(@RequestHeader("X-Player-Id") Long playerId,
                                      @RequestHeader("Idempotency-Key") String idempotencyKey,
-                                     @RequestBody WithdrawalRequest request) {
+                                     @Valid @RequestBody WithdrawalRequest request) {
         return WithdrawalResponse.from(
                 withdrawalService.requestWithdrawal(playerId, idempotencyKey, request.toCommand()));
     }

@@ -18,6 +18,7 @@ import com.example.cashier.service.WithdrawalService;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -67,5 +68,19 @@ class WithdrawalControllerTest {
                                 """))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.reason").value("INSUFFICIENT_FUNDS"));
+    }
+
+    @Test
+    void rejectsNonPositiveAmountBeforeReachingTheService() throws Exception {
+        mvc.perform(post("/api/v1/withdrawals")
+                        .header("X-Player-Id", "7")
+                        .header("Idempotency-Key", "k-3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"amount": -100.00, "currency": "EUR", "payoutCurrency": "EUR", "payoutMethodId": "pm-1"}
+                                """))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(service);
     }
 }
