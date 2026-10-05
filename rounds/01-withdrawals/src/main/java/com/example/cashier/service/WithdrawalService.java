@@ -5,12 +5,17 @@ import java.time.Clock;
 import java.util.Currency;
 import java.util.Optional;
 
-import org.springframework.context.ApplicationEventPublisher;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.example.cashier.domain.Wallet;
 import com.example.cashier.domain.Withdrawal;
+import com.example.cashier.config.CashierProperties;
+import com.example.cashier.messaging.OutboxEvent;
+import com.example.cashier.messaging.OutboxRepository;
 import com.example.cashier.messaging.WithdrawalRequestedEvent;
 import com.example.cashier.repository.WalletRepository;
 import com.example.cashier.repository.WithdrawalRepository;
@@ -27,20 +32,26 @@ public class WithdrawalService {
     private final WithdrawalRepository withdrawals;
     private final FeeCalculator feeCalculator;
     private final FxService fxService;
-    private final ApplicationEventPublisher events;
+    private final OutboxRepository outbox;
+    private final ObjectMapper json;
+    private final String withdrawalsTopic;
     private final Clock clock;
 
     public WithdrawalService(WalletRepository wallets,
                              WithdrawalRepository withdrawals,
                              FeeCalculator feeCalculator,
                              FxService fxService,
-                             ApplicationEventPublisher events,
+                             OutboxRepository outbox,
+                             ObjectMapper json,
+                             CashierProperties properties,
                              Clock clock) {
         this.wallets = wallets;
         this.withdrawals = withdrawals;
         this.feeCalculator = feeCalculator;
         this.fxService = fxService;
-        this.events = events;
+        this.outbox = outbox;
+        this.json = json;
+        this.withdrawalsTopic = properties.topics().withdrawals();
         this.clock = clock;
     }
 
@@ -75,8 +86,17 @@ public class WithdrawalService {
                 payoutAmount, payoutCurrency.getCurrencyCode(), command.payoutMethodId(),
                 clock.instant()));
 
-        events.publishEvent(WithdrawalRequestedEvent.from(withdrawal));
+        outbox.save(toOutboxEvent(withdrawal));
         return new WithdrawalResult(withdrawal, wallet.getBalance());
+    }
+
+    private OutboxEvent toOutboxEvent(Withdrawal withdrawal) {
+        try {
+            String payload = json.writeValueAsString(WithdrawalRequestedEvent.from(withdrawal));
+            return new OutboxEvent(withdrawalsTopic, String.valueOf(withdrawal.getPlayerId()), payload, clock.instant());
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Cannot serialise withdrawal event " + withdrawal.getId(), e);
+        }
     }
 
     private WithdrawalResult replay(Withdrawal existing, WithdrawalCommand command) {

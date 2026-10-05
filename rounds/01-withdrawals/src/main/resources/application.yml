@@ -12,15 +12,18 @@ spring:
       hibernate:
         jdbc:
           time_zone: UTC
+    defer-datasource-initialization: true
+  sql:
+    init:
+      mode: always
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
     producer:
       acks: all
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
       properties:
         enable.idempotence: true
-        spring.json.add.type.headers: false
 
 cashier:
   fee:
@@ -32,3 +35,5 @@ cashier:
     read-timeout: 2s
   topics:
     withdrawals: cashier.withdrawal-requested.v1
+  outbox:
+    poll-interval: 500ms

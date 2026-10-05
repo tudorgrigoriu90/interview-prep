@@ -2,6 +2,9 @@ package com.example.cashier.service;
 
 import java.math.BigDecimal;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+
+import org.apache.kafka.clients.producer.ProducerRecord;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,15 +20,17 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import com.example.cashier.domain.Wallet;
 import com.example.cashier.domain.WithdrawalStatus;
 import com.example.cashier.fx.FxRateClient;
-import com.example.cashier.messaging.WithdrawalRequestedEvent;
+import com.example.cashier.messaging.OutboxRepository;
 import com.example.cashier.repository.WalletRepository;
 import com.example.cashier.repository.WithdrawalRepository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @SpringBootTest(properties = "DB_PASSWORD=unused")
 @Testcontainers
@@ -36,7 +41,7 @@ class WithdrawalServiceIntegrationTest {
     static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
 
     @MockitoBean
-    KafkaTemplate<String, WithdrawalRequestedEvent> kafka;
+    KafkaTemplate<String, String> kafka;
 
     @MockitoBean
     FxRateClient fxRateClient;
@@ -50,10 +55,14 @@ class WithdrawalServiceIntegrationTest {
     @Autowired
     WithdrawalRepository withdrawals;
 
+    @Autowired
+    OutboxRepository outbox;
+
     private Long playerId;
 
     @BeforeEach
     void setUp() {
+        when(kafka.send(any(ProducerRecord.class))).thenReturn(CompletableFuture.completedFuture(null));
         playerId = System.nanoTime();
         wallets.save(new Wallet(playerId, "EUR", new BigDecimal("500.00")));
     }
@@ -69,11 +78,20 @@ class WithdrawalServiceIntegrationTest {
     }
 
     @Test
-    void publishesEventAfterCommit() {
+    void writesOutboxEventInSameTransactionAndRelayPublishesIt() {
         var result = service.requestWithdrawal(playerId, key(), eur("50.00"));
+        String withdrawalId = String.valueOf(result.withdrawal().getId());
 
-        verify(kafka).send(eq("cashier.withdrawal-requested.v1"),
-                eq(String.valueOf(result.withdrawal().getId())), any(WithdrawalRequestedEvent.class));
+        assertThat(outbox.findAll())
+                .anySatisfy(e -> {
+                    assertThat(e.getKey()).isEqualTo(String.valueOf(playerId));
+                    assertThat(e.getPayload()).contains("\"withdrawalId\":" + withdrawalId);
+                });
+
+        verify(kafka, timeout(5_000).atLeastOnce()).send(argThat((ProducerRecord<String, String> r) ->
+                r.topic().equals("cashier.withdrawal-requested.v1")
+                        && r.key().equals(String.valueOf(playerId))
+                        && r.value().contains("\"withdrawalId\":" + withdrawalId)));
     }
 
     @Test

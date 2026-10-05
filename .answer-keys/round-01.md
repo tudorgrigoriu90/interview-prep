@@ -36,3 +36,6 @@ Assumptions given: multiple instances, PostgreSQL READ COMMITTED, Kafka at-least
 5. #8 remote FX call while holding the wallet row lock.
 6. #9 BigDecimal.equals in replay; #10 double in response; #11 stale balance.
 7. Close: #12–#14, missing concurrency test; fix order 1→4 first.
+
+## Post-round note
+During the live review the candidate's finding #12 (fire-and-forget Kafka send after commit) was implemented as a transactional outbox with a ShedLock relay, in the commit "Replace after-commit Kafka send with transactional outbox". The original exercise (with #12 present) is the commit `32a568e`. All other planted issues are unchanged.
