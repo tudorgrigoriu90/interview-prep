@@ -1,0 +1,76 @@
+spring:
+  application:
+    name: payouts
+  datasource:
+    # connectionTimeZone=UTC: Instants are stored and read in UTC. rewriteBatchedStatements: real JDBC batching on MySQL.
+    url: jdbc:mysql://${DB_HOST:localhost}:3306/payouts?connectionTimeZone=UTC&rewriteBatchedStatements=true
+    username: ${DB_USER:payouts}
+    password: ${DB_PASSWORD}            # no default: a missing secret must fail at startup
+    hikari:
+      maximum-pool-size: 10             # small pools beat big ones; waiting for a connection is cheaper than DB contention
+  jpa:
+    open-in-view: false                 # no EntityManager held for the whole HTTP request
+    hibernate:
+      ddl-auto: validate                # Flyway owns the schema; Hibernate only checks that the mapping matches it
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
+    producer:
+      acks: all                         # leader AND in-sync replicas have the record
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      properties:
+        enable.idempotence: true        # broker de-duplicates producer retries and keeps per-partition order
+        max.in.flight.requests.per.connection: 5
+        request.timeout.ms: 3000
+        delivery.timeout.ms: 5000       # shorter than the relay's 10 s wait: when the relay gives up, so has the client
+        max.block.ms: 3000
+    consumer:
+      auto-offset-reset: earliest       # a new consumer group starts from the beginning instead of skipping history
+      enable-auto-commit: false         # Spring commits after the listener returns
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      properties:
+        isolation.level: read_committed
+    listener:
+      ack-mode: record                  # commit each record's offset after it was processed
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics    # never expose env, heapdump or loggers publicly
+  endpoint:
+    health:
+      probes:
+        enabled: true                   # separate liveness and readiness
+
+payouts:
+  fee:
+    percent: 2.5
+    minimum:                            # per currency: 1.00 EUR is not 1 JPY
+      EUR: 1.00
+      SEK: 10.00
+      NOK: 10.00
+  psp:
+    base-url: ${PSP_BASE_URL:https://psp.example.invalid}
+    connect-timeout: 1s
+    read-timeout: 5s
+  webhook:
+    secret: ${PSP_WEBHOOK_SECRET}       # from the environment / vault, never committed
+    tolerance: 5m
+  topics:
+    withdrawal-events: payouts.withdrawal-events.v1
+    risk-decisions: risk.withdrawal-decisions.v1
+    partitions: 6
+    replicas: 3
+  jobs:
+    enabled: true
+    batch-size: 50
+    stuck-after: 10m
+    outbox-run-budget: 20s
